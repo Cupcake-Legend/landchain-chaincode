@@ -1,0 +1,10 @@
+# Ignore everything
+*
+
+
+!.gitIgnore
+# Unignore parent directories so Git can reach the file
+!asset-transfer-basic/
+!asset-transfer-basic/application-gateway-javascript/
+!asset-transfer-basic/application-gateway-javascript/src/
+!asset-transfer-basic/application-gateway-javascript/src/server.js
