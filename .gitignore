@@ -1,7 +1,6 @@
 # Ignore everything
 *
 
-
 !.gitIgnore
 # Unignore parent directories so Git can reach the file
 !asset-transfer-basic/

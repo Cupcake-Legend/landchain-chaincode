@@ -1,3 +1,5 @@
+process.on('unhandledRejection', (err) => console.error('Unhandled Rejection:', err));
+process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
 
 const express = require('express');
 const cors = require('cors');
@@ -6,7 +8,7 @@ const crypto = require('node:crypto');
 const fs = require('fs/promises');
 const path = require('path');
 const { TextDecoder } = require('util');
-
+// server.js
 const app = express();
 const PORT = 3000;
 
@@ -103,6 +105,7 @@ app.post('/api/init', async (req, res) => {
     }
 });
 
+
 //Get all assets
 app.get('/api/certificates', async (req, res) => {
     try {
@@ -116,7 +119,9 @@ app.get('/api/certificates', async (req, res) => {
     }
 });
 
+
 //insert and validation
+const keyFile = require('./service-account-key.json');
 app.post('/api/insert-certificate', async (req, res) => {
 
     const { certificateHash, transactionData, certificateEditionHash, participantKeys } = req.body;
@@ -124,10 +129,15 @@ app.post('/api/insert-certificate', async (req, res) => {
     if (!certificateHash || !transactionData || !certificateEditionHash || !participantKeys) {
         return res.status(400).json({ error: 'Data incomplete!' });
     }
+
+
     try {
-        console.log('Checking and Creating New Certificate Data:', { certificateHash, certificateEditionHash, participantKeys });
+        console.log('Checking and Creating New Certificate Data:', { certificateHash, certificateEditionHash, participantKeys, transactionData, keyFile });
+        console.log(typeof transactionData);
+        console.log(typeof participantKeys);
+        console.log(typeof keyFile);
         const { contract, gateway, client } = await getContract();
-        const result = await contract.submitTransaction('CreateAsset', certificateHash, certificateEditionHash, participantKeys, transactionData);
+        const result = await contract.submitTransaction('CreateAsset', certificateHash, certificateEditionHash, participantKeys, transactionData, JSON.stringify(keyFile));
         console.log('Chaincode result:', result.toString());
         res.json({ message: `Certificate: ${certificateEditionHash} created`, result: result.toString() });
         gateway.close();
@@ -149,7 +159,7 @@ app.post('/api/tps', async (req, res) => {
 
     try {
         console.log('➡️ Creating TPS in chaincode:', { id, name, totalVoters });
-        const { contract, gateway, clgient } = await getContract();
+        const { contract, gateway, client } = await getContract();
         const result = await contract.submitTransaction('CreateAsset', id, name, String(totalVoters));
         console.log('Chaincode result:', result.toString());
         res.json({ message: `TPS ${id} created`, result: result.toString() });

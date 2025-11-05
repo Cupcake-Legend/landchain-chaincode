@@ -11,6 +11,7 @@ const stringify = require('json-stringify-deterministic');
 const sortKeysRecursive = require('sort-keys-recursive');
 const { Contract } = require('fabric-contract-api');
 const crypto = require('crypto');
+
 const { KeyManagementServiceClient } = require('@google-cloud/kms');
 
 class AssetTransfer extends Contract {
@@ -42,41 +43,56 @@ class AssetTransfer extends Contract {
         }
     }
 
-    async verifySignatureWithKMS(signatureBase64, kmsKeyName, transactionData) {
-        const client = new KeyManagementServiceClient();
+    async verifySignatureWithKMS(signatureBase64, kmsKeyName, transactionData, keyFile) {
+        // Pass keyFile here instead of relying on GOOGLE_APPLICATION_CREDENTIALS
+        const client = new KeyManagementServiceClient({ credentials: keyFile });
 
         const [publicKeyResponse] = await client.getPublicKey({ name: kmsKeyName });
         const publicKeyPem = publicKeyResponse.pem;
 
-        const verify = crypto.createVerify("SHA256");
+        const verify = crypto.createVerify('SHA256');
         verify.update(transactionData);
         verify.end();
 
-        const signatureBuffer = Buffer.from(signatureBase64, "base64");
+        const signatureBuffer = Buffer.from(signatureBase64, 'base64');
         const isValid = verify.verify(publicKeyPem, signatureBuffer);
+
 
         return isValid;
     }
 
-
     // CreateAsset issues a new asset to the world state with given details.
-    async CreateAsset(ctx, certificateHash, certificateEditionHash, participantsJSON, transactionData) {
+    async CreateAsset(ctx, certificateHash, certificateEditionHash, participantsJSON, transactionData, keyFileJSON) {
+        const keyFile = JSON.parse(keyFileJSON);
+
         const exists = await this.AssetExists(ctx, certificateHash);
+        console.log(`Asset exists: ${exists}`);
 
         const participants = JSON.parse(participantsJSON);
+
         for (const participant of participants) {
             const kmsKeyName = `projects/landchain-475513/locations/asia-southeast2/keyRings/main-keyring/cryptoKeys/${participant.kms_key_id}/cryptoKeyVersions/1`;
+
+            console.log(`Checking signature for participant: ${participant.name} (${participant.kms_key_id})`);
 
             const verified = await this.verifySignatureWithKMS(
                 participant.signature,
                 kmsKeyName,
-                transactionData
+                transactionData,
+                keyFile,
             );
 
             if (!verified) {
-                throw new Error(`Signature verification failed for ${participant.kmsKeyId}`);
+                throw new Error(`Signature verification failed for ${participant.kms_key_id}`);
             }
         }
+
+        const txTimestamp = ctx.stub.getTxTimestamp();
+        const timestamp = new Date(txTimestamp.seconds * 1000).toISOString();
+
+        const owners = participants.filter(p => p.type === 'buyer' || p.type === 'owner').map(p  => ({
+            id: p.kms_key_id
+        }));
 
         const certificate = [
             {
@@ -84,13 +100,14 @@ class AssetTransfer extends Contract {
                 editions: [
                     {
                         id: certificateEditionHash,
-                        owners: participants.map(p => ({ id: p.kmsKeyId })),
-                        timestamp: new Date().toISOString(),
+                        owners: owners,
+                        timestamp: timestamp,
                     },
                 ],
             },
         ];
 
+        console.log('Saving certificate to ledger...');
         await ctx.stub.putState(
             certificateHash,
             Buffer.from(stringify(sortKeysRecursive(certificate)))
