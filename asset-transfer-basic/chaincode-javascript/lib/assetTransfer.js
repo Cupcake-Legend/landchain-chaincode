@@ -13,6 +13,7 @@ const { Contract } = require('fabric-contract-api');
 const crypto = require('crypto');
 
 const { KeyManagementServiceClient } = require('@google-cloud/kms');
+const { exists } = require('fs');
 
 class AssetTransfer extends Contract {
 
@@ -64,56 +65,67 @@ class AssetTransfer extends Contract {
     // CreateAsset issues a new asset to the world state with given details.
     async CreateAsset(ctx, certificateHash, certificateEditionHash, participantsJSON, transactionData, keyFileJSON) {
         const keyFile = JSON.parse(keyFileJSON);
-
-        const exists = await this.AssetExists(ctx, certificateHash);
-        console.log(`Asset exists: ${exists}`);
-
         const participants = JSON.parse(participantsJSON);
 
-        for (const participant of participants) {
+        const existsBytes = await ctx.stub.getState(certificateHash);
+        const certificateExists = existsBytes && existsBytes.length > 0;
+        const currentOwners = participants
+            .filter(p => p.type === 'buyer' || p.type === 'owner')
+            .map(p => p.kms_key_id)
+            .sort();
+
+        let certificates = [];
+
+        if (certificateExists) {
+            certificates = JSON.parse(existsBytes.toString());
+
+            const latestEdition = certificates[0].editions[certificates[0].editions.length - 1];
+
+            const latestOwners = latestEdition.owners.map(o => o.id).sort();
+
+            if (JSON.stringify(latestOwners) !== JSON.stringify(currentOwners)) {
+                throw new Error('Previous Owner Doesn\'t match');
+            }
+        }
+
+        await Promise.all(participants.map(async (participant) => {
             const kmsKeyName = `projects/landchain-475513/locations/asia-southeast2/keyRings/main-keyring/cryptoKeys/${participant.kms_key_id}/cryptoKeyVersions/1`;
-
-            console.log(`Checking signature for participant: ${participant.name} (${participant.kms_key_id})`);
-
             const verified = await this.verifySignatureWithKMS(
                 participant.signature,
                 kmsKeyName,
                 transactionData,
                 keyFile,
             );
-
             if (!verified) {
                 throw new Error(`Signature verification failed for ${participant.kms_key_id}`);
             }
-        }
+        }));
+
 
         const txTimestamp = ctx.stub.getTxTimestamp();
         const timestamp = new Date(txTimestamp.seconds * 1000).toISOString();
 
-        const owners = participants.filter(p => p.type === 'buyer' || p.type === 'owner').map(p  => ({
-            id: p.kms_key_id
-        }));
+        const newEdition = {
+            id: certificateEditionHash,
+            owners: currentOwners.map(id => ({ id })),
+            timestamp: timestamp,
+        }
 
-        const certificate = [
-            {
+        if (certificateExists) {
+            certificates[0].editions.push(newEdition);
+        } else {
+            certificates.push({
                 id: certificateHash,
-                editions: [
-                    {
-                        id: certificateEditionHash,
-                        owners: owners,
-                        timestamp: timestamp,
-                    },
-                ],
-            },
-        ];
+                editions: [newEdition],
+            });
+        }
 
-        console.log('Saving certificate to ledger...');
         await ctx.stub.putState(
             certificateHash,
-            Buffer.from(stringify(sortKeysRecursive(certificate)))
+            Buffer.from(stringify(sortKeysRecursive(certificates)))
         );
 
-        return JSON.stringify(certificate);
+        return JSON.stringify(certificates);
     }
 
     // ReadAsset returns the asset stored in the world state with given id.
