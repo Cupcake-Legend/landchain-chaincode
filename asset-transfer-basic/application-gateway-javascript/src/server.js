@@ -55,6 +55,8 @@ const tlsCertPath = path.resolve(
 );
 const peerEndpoint = 'localhost:7051';
 const peerHostAlias = 'peer0.org1.example.com';
+const keyFile = require('./service-account-key.json');
+
 
 async function newGrpcConnection() {
     const grpc = require('@grpc/grpc-js');
@@ -121,32 +123,45 @@ app.get('/api/certificates', async (req, res) => {
 
 
 //insert and validation
-const keyFile = require('./service-account-key.json');
 app.post('/api/insert-certificate', async (req, res) => {
-
     const { certificateHash, transactionData, certificateEditionHash, participantKeys } = req.body;
 
     if (!certificateHash || !transactionData || !certificateEditionHash || !participantKeys) {
-        return res.status(400).json({ error: 'Data incomplete!' });
+        return res.status(400).json({ success: false, error: 'Data incomplete!' });
     }
-
 
     try {
-        console.log('Checking and Creating New Certificate Data:', { certificateHash, certificateEditionHash, participantKeys, transactionData, keyFile });
-        console.log(typeof transactionData);
-        console.log(typeof participantKeys);
-        console.log(typeof keyFile);
         const { contract, gateway, client } = await getContract();
-        const result = await contract.submitTransaction('CreateAsset', certificateHash, certificateEditionHash, participantKeys, transactionData, JSON.stringify(keyFile));
+        const result = await contract.submitTransaction(
+            'CreateAsset',
+            certificateHash,
+            certificateEditionHash,
+            participantKeys,
+            transactionData,
+            JSON.stringify(require('./service-account-key.json'))
+        );
+
         console.log('Chaincode result:', result.toString());
-        res.json({ message: `Certificate: ${certificateEditionHash} created`, result: result.toString() });
+
         gateway.close();
         client.close();
+
+        return res.status(200).json({
+            success: true,
+            message: `Certificate ${certificateEditionHash} successfully recorded.`,
+            result: result.toString()
+        });
+
     } catch (err) {
         console.error('Chaincode error:', err);
-        res.status(500).json({ error: err.message });
+        return res.status(500).json({
+            success: false,
+            error: err.message || 'Blockchain transaction failed.'
+        });
     }
 });
+
+
 
 
 //New TPS

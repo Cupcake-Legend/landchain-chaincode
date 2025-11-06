@@ -82,9 +82,13 @@ class AssetTransfer extends Contract {
             const latestEdition = certificates[0].editions[certificates[0].editions.length - 1];
 
             const latestOwners = latestEdition.owners.map(o => o.id).sort();
+            const sellers = participants
+                .filter(p => p.type === 'seller')
+                .map(p => p.kms_key_id)
+                .sort();
 
-            if (JSON.stringify(latestOwners) !== JSON.stringify(currentOwners)) {
-                throw new Error('Previous Owner Doesn\'t match');
+            if (JSON.stringify(latestOwners) !== JSON.stringify(sellers)) {
+                throw new Error("Previous Owner Doesn't match");
             }
         }
 
