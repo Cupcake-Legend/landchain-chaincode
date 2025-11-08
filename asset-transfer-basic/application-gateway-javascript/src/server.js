@@ -55,7 +55,6 @@ const tlsCertPath = path.resolve(
 );
 const peerEndpoint = 'localhost:7051';
 const peerHostAlias = 'peer0.org1.example.com';
-const keyFile = require('./service-account-key.json');
 
 
 async function newGrpcConnection() {
@@ -138,7 +137,6 @@ app.post('/api/insert-certificate', async (req, res) => {
             certificateEditionHash,
             participantKeys,
             transactionData,
-            JSON.stringify(require('./service-account-key.json'))
         );
 
         console.log('Chaincode result:', result.toString());

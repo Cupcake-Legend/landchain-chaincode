@@ -44,41 +44,37 @@ class AssetTransfer extends Contract {
         }
     }
 
-    async verifySignatureWithKMS(signatureBase64, kmsKeyName, transactionData, keyFile) {
-        // Pass keyFile here instead of relying on GOOGLE_APPLICATION_CREDENTIALS
-        const client = new KeyManagementServiceClient({ credentials: keyFile });
-
-        const [publicKeyResponse] = await client.getPublicKey({ name: kmsKeyName });
-        const publicKeyPem = publicKeyResponse.pem;
-
-        const verify = crypto.createVerify('SHA256');
-        verify.update(transactionData);
-        verify.end();
-
+    async verifySignature(signatureBase64, publicKeyPem, transactionData) {
         const signatureBuffer = Buffer.from(signatureBase64, 'base64');
-        const isValid = verify.verify(publicKeyPem, signatureBuffer);
 
+        const verifier = crypto.createVerify('sha256');
+        verifier.update(transactionData);        
+        verifier.end();
 
+        const isValid = verifier.verify(publicKeyPem, signatureBuffer);
         return isValid;
     }
 
-    // CreateAsset issues a new asset to the world state with given details.
-    async CreateAsset(ctx, certificateHash, certificateEditionHash, participantsJSON, transactionData, keyFileJSON) {
-        const keyFile = JSON.parse(keyFileJSON);
+    async CreateAsset(ctx, certificateHash, certificateEditionHash, participantsJSON, transactionData) {
         const participants = JSON.parse(participantsJSON);
+
+        participants.forEach(p => {
+            if (p.public_key_pem) {
+                p.public_key_pem = p.public_key_pem.replace(/\\n/g, '\n');
+            }
+        });
 
         const existsBytes = await ctx.stub.getState(certificateHash);
         const certificateExists = existsBytes && existsBytes.length > 0;
+
         const currentOwners = participants
             .filter(p => p.type === 'buyer' || p.type === 'owner')
             .map(p => p.kms_key_id)
             .sort();
 
         let certificates = [];
-
         if (certificateExists) {
             certificates = JSON.parse(existsBytes.toString());
-
             const latestEdition = certificates[0].editions[certificates[0].editions.length - 1];
 
             const latestOwners = latestEdition.owners.map(o => o.id).sort();
@@ -93,18 +89,20 @@ class AssetTransfer extends Contract {
         }
 
         await Promise.all(participants.map(async (participant) => {
-            const kmsKeyName = `projects/landchain-475513/locations/asia-southeast2/keyRings/main-keyring/cryptoKeys/${participant.kms_key_id}/cryptoKeyVersions/1`;
-            const verified = await this.verifySignatureWithKMS(
+            if (!participant.public_key_pem) {
+                throw new Error(`Missing public_key_pem for participant ${participant.kms_key_id || participant.id}`);
+            }
+
+            const verified = await this.verifySignature(
                 participant.signature,
-                kmsKeyName,
-                transactionData,
-                keyFile,
+                participant.public_key_pem,
+                transactionData
             );
+
             if (!verified) {
-                throw new Error(`Signature verification failed for ${participant.kms_key_id}`);
+                throw new Error(`Signature verification failed for ${participant.kms_key_id || participant.id}`);
             }
         }));
-
 
         const txTimestamp = ctx.stub.getTxTimestamp();
         const timestamp = new Date(txTimestamp.seconds * 1000).toISOString();
@@ -113,7 +111,7 @@ class AssetTransfer extends Contract {
             id: certificateEditionHash,
             owners: currentOwners.map(id => ({ id })),
             timestamp: timestamp,
-        }
+        };
 
         if (certificateExists) {
             certificates[0].editions.push(newEdition);
@@ -126,11 +124,12 @@ class AssetTransfer extends Contract {
 
         await ctx.stub.putState(
             certificateHash,
-            Buffer.from(stringify(sortKeysRecursive(certificates)))
+            Buffer.from(JSON.stringify(certificates))
         );
 
         return JSON.stringify(certificates);
     }
+
 
     // ReadAsset returns the asset stored in the world state with given id.
     async ReadAsset(ctx, id) {
