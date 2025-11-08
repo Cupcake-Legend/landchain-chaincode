@@ -48,7 +48,7 @@ class AssetTransfer extends Contract {
         const signatureBuffer = Buffer.from(signatureBase64, 'base64');
 
         const verifier = crypto.createVerify('sha256');
-        verifier.update(transactionData);        
+        verifier.update(transactionData);
         verifier.end();
 
         const isValid = verifier.verify(publicKeyPem, signatureBuffer);
@@ -185,6 +185,34 @@ class AssetTransfer extends Contract {
         return oldOwner;
     }
 
+    async GetAssetHistory(ctx, assetID) {
+        console.info(`Getting history for asset: ${assetID}`);
+        const iterator = await ctx.stub.getHistoryForKey(assetID);
+        const allResults = [];
+
+        while (true) {
+            const res = await iterator.next();
+
+            if (res.value && res.value.value.toString()) {
+                const record = JSON.parse(res.value.value.toString('utf8'));
+                allResults.push({
+                    txId: res.value.txId,
+                    timestamp: res.value.timestamp,
+                    isDelete: res.value.is_delete,
+                    record,
+                });
+            }
+
+            if (res.done) {
+                await iterator.close();
+                break;
+            }
+        }
+
+        return JSON.stringify(allResults);
+    }
+
+
     // GetAllAssets returns all assets found in the world state.
     async GetAllAssets(ctx) {
         const allResults = [];
@@ -205,6 +233,8 @@ class AssetTransfer extends Contract {
         }
         return JSON.stringify(allResults);
     }
+
+
 }
 
 module.exports = AssetTransfer;
