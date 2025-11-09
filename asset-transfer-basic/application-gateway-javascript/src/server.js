@@ -159,6 +159,41 @@ app.post('/api/insert-certificate', async (req, res) => {
     }
 });
 
+app.post('/api/verify-certificate', async (req, res) => {
+    const { certificateHash, certificateEditionHash } = req.body;
+
+    if (!certificateHash || !certificateEditionHash) {
+        return res.status(400).json({ success: false, error: 'Data incomplete!' });
+    }
+
+    try {
+        const { contract, gateway, client } = await getContract();
+        const result = await contract.submitTransaction(
+            'verifyAsset',
+            certificateHash,
+            certificateEditionHash,
+        );
+
+        console.log('Chaincode result:', result.toString());
+
+        gateway.close();
+        client.close();
+
+        return res.status(200).json({
+            success: true,
+            message: 'success',
+            result: result.toString()
+        });
+
+    } catch (err) {
+        console.error('Chaincode error:', err);
+        return res.status(500).json({
+            success: false,
+            error: err.message,
+        });
+    }
+
+});
 
 
 // Start server
