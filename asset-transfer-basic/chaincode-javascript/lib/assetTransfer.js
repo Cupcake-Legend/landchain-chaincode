@@ -132,6 +132,7 @@ class AssetTransfer extends Contract {
 
     async verifyAsset(ctx, certificateHash, certificateEditionHash) {
         const certificateExists = await ctx.stub.getState(certificateHash);
+        
 
         if (!certificateExists || certificateExists.length === 0) {
             throw new Error(`Certificate not found!`);
@@ -139,21 +140,23 @@ class AssetTransfer extends Contract {
 
         const certificate = JSON.parse(certificateExists.toString());
 
-        const editionIndex = certificate.editions.findIndex((edition) => edition.id === certificateEditionHash);
+        const editionIndex = certificate[0].editions.findIndex(
+            (edition) => edition.id === certificateEditionHash
+        );
 
         if (editionIndex === -1) {
             throw new Error(`Certificate Edition not found!`);
         }
 
-        const latestEditionIndex = certificate.editions.length - 1;
-        const isLatest = editonIndex === latestEditionIndex;
+        const latestEditionIndex = certificate[0].editions.length - 1;
+        const isLatest = editionIndex === latestEditionIndex;
 
         return {
             exists: true,
             isLatest,
-        }
-
+        };
     }
+
 
 
     // ReadAsset returns the asset stored in the world state with given id.

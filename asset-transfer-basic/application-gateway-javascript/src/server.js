@@ -182,7 +182,7 @@ app.post('/api/verify-certificate', async (req, res) => {
         return res.status(200).json({
             success: true,
             message: 'success',
-            result: result.toString()
+            result: JSON.parse(Buffer.from(result).toString()),
         });
 
     } catch (err) {
@@ -194,7 +194,6 @@ app.post('/api/verify-certificate', async (req, res) => {
     }
 
 });
-
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
