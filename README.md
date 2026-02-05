@@ -87,7 +87,7 @@ The REST API will be available at `http://localhost:3000`.
 ```json
 {
   "certificateHash": "hash_of_original_document",
-  "certificateEditionHash": "hash_of_current_edition",
+  "certificateEditionFileHash": "hash_of_current_file_edition",
   "transactionData": "metadata_string",
   "participantKeys": "[{\"kms_key_id\": \"id1\", \"signature\": \"...\", \"public_key_pem\": \"...\", \"type\": \"buyer\"}]"
 }
